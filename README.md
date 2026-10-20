@@ -1,7 +1,7 @@
 # AI Code Review Agent
 
 A GitHub App that reviews pull requests, traces bugs across files, flags security issues,
-and proposes fixes backed by line-specific evidence. Uncertain findings are flagged, not invented.
+and proposes fixes backend by line-specific evidence. Uncertain findings are flagged, not invented.
 
 > Status: Part 2 of 8 (diff parsing and AST). See [docs/ROADMAP.md](docs/ROADMAP.md).
 
