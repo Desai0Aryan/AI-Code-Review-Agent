@@ -9,8 +9,6 @@ and proposes fixes backed by line-specific evidence. Uncertain findings are flag
 
 ```bash
 # 1. Navigate to the project
-cd ~/Downloads/Projects/TraceGuard
-
 # 2. Create and activate the virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
