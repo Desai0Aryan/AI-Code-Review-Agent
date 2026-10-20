@@ -3,7 +3,7 @@
 A GitHub App that reviews pull requests, traces bugs across files, flags security issues,
 and proposes fixes backend by line-specific evidence. Uncertain findings are flagged, not invented.
 
-> Status: Part 2 of 8 (diff parsing and AST). See [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: Part 3 of 8 (context retrieval). See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Quick start
 
@@ -75,3 +75,15 @@ docker compose up --build
   module-level edits from function edits.
 - `app/github_client.py` and `app/pipeline.py`: fetch the PR diff and file contents at base/head,
   then build the change set. The webhook now logs every changed function per PR.
+- `app/index.py`: downloads the repo tarball once (in memory, never to disk), parses every Python file,
+  and indexes definitions and call sites. Skips vendored dirs, path traversal and oversized files.
+- `app/context.py`: for each changed function, finds callers (with call-site lines), callees resolved
+  across files, related tests (by direct call and by `test_<module>.py` naming), and recent commits.
+  Ambiguous name matches are flagged rather than guessed, and every limit is recorded as a caveat
+  (e.g. "no tests reference this function") so the reviewer can calibrate confidence.
+- `UnitContext.to_text()` renders that evidence as a compact block for the LLM prompt (Part 5).
+
+### Known limits of context retrieval
+Resolution is by name, not full type inference, so dynamic dispatch can hide or confuse call edges.
+That is why ambiguous matches carry an `ambiguous` flag. History is per-file commit history from the
+REST API (GitHub's REST API has no blame endpoint).

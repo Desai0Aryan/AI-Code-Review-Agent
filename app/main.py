@@ -8,7 +8,7 @@ from app.config import get_settings
 from app.events import PullRequestEvent
 from app.github_auth import GitHubAuth
 from app.github_client import GitHubClient
-from app.pipeline import build_changeset
+from app.pipeline import build_changeset, build_context
 from app.security import verify_signature
 
 logger = logging.getLogger("code_review_agent")
@@ -34,16 +34,22 @@ def review_pull_request(event: PullRequestEvent) -> None:
         token = auth.get_installation_token(event.installation_id)
         with GitHubClient(token, settings.github_api_url) as client:
             changeset = build_changeset(client, event)
+            contexts = build_context(client, event, changeset)
     except Exception:
         logger.exception("review failed repo=%s pr=%s", event.repo_full_name, event.pr_number)
         return
 
     for cu in changeset.changed_units:
+        ctx = contexts.get(cu.key)
         logger.info(
-            "changed unit %s lines=%s removed=%d",
+            "changed unit %s lines=%s removed=%d callers=%d callees=%d tests=%d commits=%d",
             cu.key,
             cu.changed_lines,
             cu.removed_nearby,
+            len(ctx.callers) if ctx else 0,
+            len(ctx.callees) if ctx else 0,
+            len(ctx.tests) if ctx else 0,
+            len(ctx.history) if ctx else 0,
         )
 
 

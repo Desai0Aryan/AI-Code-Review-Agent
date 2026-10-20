@@ -34,6 +34,7 @@ class CodeUnit:
     end_line: int  # 1-based, inclusive
     source: str
     calls: list[str] = field(default_factory=list)
+    call_sites: list[tuple[str, int]] = field(default_factory=list)  # (callee name, 1-based line)
     parent: str | None = None  # qualified name of enclosing class/function
 
     def contains(self, line: int) -> bool:
@@ -77,13 +78,17 @@ def _call_name(call: Node, src: bytes) -> str | None:
     return None
 
 
-def _collect_calls(node: Node, src: bytes, out: list[str]) -> None:
+def _collect_calls(
+    node: Node, src: bytes, out: list[str], sites: list[tuple[str, int]]
+) -> None:
     if node.type == "call":
         name = _call_name(node, src)
-        if name and name not in out:
-            out.append(name)
+        if name:
+            if name not in out:
+                out.append(name)
+            sites.append((name, node.start_point[0] + 1))
     for child in node.children:
-        _collect_calls(child, src, out)
+        _collect_calls(child, src, out, sites)
 
 
 def _walk(node: Node, src: bytes, scope: list[tuple[str, str]], units: list[CodeUnit]) -> None:
@@ -118,7 +123,7 @@ def _walk(node: Node, src: bytes, scope: list[tuple[str, str]], units: list[Code
             if kind != "class":
                 body = target.child_by_field_name("body")
                 if body is not None:
-                    _collect_calls(body, src, unit.calls)
+                    _collect_calls(body, src, unit.calls, unit.call_sites)
             units.append(unit)
 
             body = target.child_by_field_name("body")
