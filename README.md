@@ -8,15 +8,52 @@ and proposes fixes backed by line-specific evidence. Uncertain findings are flag
 ## Quick start
 
 ```bash
+# 1. Navigate to the project
+cd ~/Downloads/Projects/TraceGuard
+
+# 2. Create and activate the virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
-cp .env.example .env   # fill in GitHub App credentials
-uvicorn app.main:app --reload
-```
 
-Docker: `docker compose up --build`
+# 3. Install dependencies
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+
+# 4. Create .env if it doesn't already exist
+[ -f .env ] || cp .env.example .env
+
+# IMPORTANT: Fill in your GitHub App credentials in .env before continuing:
+# CRA_GITHUB_APP_ID
+# CRA_GITHUB_PRIVATE_KEY
+# CRA_GITHUB_WEBHOOK_SECRET
+
+# 5. Run tests
+pytest
+
+# 6. Start the local API server
+uvicorn app.main:app --reload
+
+# In a SECOND terminal, run:
+# cd ~/Downloads/Projects/TraceGuard
+# ngrok http 8000
+
+# If ngrok requires authentication, configure your token once:
+# ngrok config add-authtoken YOUR_NGROK_AUTHTOKEN
+
+# 7. Open these URLs to verify the app
+# API docs:     http://127.0.0.1:8000/docs
+# Health:       http://127.0.0.1:8000/health
+# ngrok status: http://127.0.0.1:4040
+
+# 8. Configure your GitHub App webhook URL using the HTTPS
+# forwarding URL from ngrok, followed by /webhook.
+# Example: https://your-subdomain.ngrok-free.dev/webhook
+# Set the webhook secret to CRA_GITHUB_WEBHOOK_SECRET.
+# Enable the Pull requests event and install the app on your test repo.
+
+# Docker alternative (run instead of the local server):
+# docker compose up --build
+```
 
 ## Create the GitHub App
 
