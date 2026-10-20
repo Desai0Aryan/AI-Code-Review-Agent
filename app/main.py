@@ -4,11 +4,13 @@ import logging
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
+from app.analysis import AnalysisReport, run_analysis
 from app.config import get_settings
 from app.events import PullRequestEvent
 from app.github_auth import GitHubAuth
 from app.github_client import GitHubClient
 from app.pipeline import build_changeset, build_context
+from app.sandbox import get_sandbox
 from app.security import verify_signature
 
 logger = logging.getLogger("code_review_agent")
@@ -29,12 +31,15 @@ def review_pull_request(event: PullRequestEvent) -> None:
         event.head_sha[:7],
     )
     settings = get_settings()
+    archive = None
     try:
         auth = GitHubAuth(settings.github_app_id, settings.private_key_pem, settings.github_api_url)
         token = auth.get_installation_token(event.installation_id)
         with GitHubClient(token, settings.github_api_url) as client:
             changeset = build_changeset(client, event)
-            contexts = build_context(client, event, changeset)
+            if changeset.changed_units:
+                archive = client.get_repo_archive(event.repo_full_name, event.head_sha)
+            contexts = build_context(client, event, changeset, archive=archive)
     except Exception:
         logger.exception("review failed repo=%s pr=%s", event.repo_full_name, event.pr_number)
         return
@@ -51,6 +56,35 @@ def review_pull_request(event: PullRequestEvent) -> None:
             len(ctx.tests) if ctx else 0,
             len(ctx.history) if ctx else 0,
         )
+
+    report = AnalysisReport()
+    sandbox = get_sandbox(settings) if archive is not None else None
+    if sandbox is not None:
+        try:
+            report = run_analysis(
+                archive,
+                changeset,
+                contexts,
+                sandbox,
+                analysis_timeout=settings.analysis_timeout,
+                test_timeout=settings.test_timeout,
+            )
+        except Exception:
+            logger.exception("analysis failed repo=%s pr=%s", event.repo_full_name, event.pr_number)
+
+    if report.tests is not None:
+        t = report.tests
+        logger.info(
+            "tests ran=%d passed=%d failed=%d errors=%d timed_out=%s crashed=%s",
+            t.tests, t.passed, t.failed, t.errors, t.timed_out, t.crashed,
+        )  # fmt: skip
+    for f in report.relevant:
+        logger.info(
+            "finding %s %s %s severity=%s scope=%s: %s",
+            f.tool, f.rule, f.location, f.severity, f.scope, f.message,
+        )  # fmt: skip
+    for note in report.notes:
+        logger.warning("analysis note: %s", note)
 
 
 @app.get("/health")

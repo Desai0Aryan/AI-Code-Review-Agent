@@ -1,56 +1,30 @@
 # AI Code Review Agent
 
 A GitHub App that reviews pull requests, traces bugs across files, flags security issues,
-and proposes fixes backend by line-specific evidence. Uncertain findings are flagged, not invented.
+and proposes fixes backed by line-specific evidence. Uncertain findings are flagged, not invented.
 
-> Status: Part 3 of 8 (context retrieval). See [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: Part 4 of 8 (static analysis and sandboxed tests). See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Quick start
 
 ```bash
-# 1. Navigate to the project
-# 2. Create and activate the virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 3. Install dependencies
-python -m pip install --upgrade pip
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-
-# 4. Create .env if it doesn't already exist
-[ -f .env ] || cp .env.example .env
-
-# IMPORTANT: Fill in your GitHub App credentials in .env before continuing:
-# CRA_GITHUB_APP_ID
-# CRA_GITHUB_PRIVATE_KEY
-# CRA_GITHUB_WEBHOOK_SECRET
-
-# 5. Run tests
 pytest
-
-# 6. Start the local API server
+cp .env.example .env   # fill in GitHub App credentials
 uvicorn app.main:app --reload
-
-# In a SECOND terminal, run:
-ngrok http 8000
-
-# If ngrok requires authentication, configure your token once:
-# ngrok config add-authtoken YOUR_NGROK_AUTHTOKEN
-
-# 7. Open these URLs to verify the app
-# API docs:     http://127.0.0.1:8000/docs
-# Health:       http://127.0.0.1:8000/health
-# ngrok status: http://127.0.0.1:4040
-
-# 8. Configure your GitHub App webhook URL using the HTTPS
-# forwarding URL from ngrok, followed by /webhook.
-# Example: https://your-subdomain.ngrok-free.dev/webhook
-# Set the webhook secret to CRA_GITHUB_WEBHOOK_SECRET.
-# Enable the Pull requests event and install the app on your test repo.
-
-# Docker alternative (run instead of the local server):
-docker compose up --build
 ```
+
+Docker: `docker compose up --build`
+
+Sandbox image (needed for static analysis and test runs, Part 4 onward):
+
+```bash
+docker build -f docker/sandbox.Dockerfile -t code-review-sandbox .
+```
+Run the app itself on the host (`uvicorn app.main:app`) so it can start sandbox containers. Do not
+mount `/var/run/docker.sock` into the app container: that is root on the host. If Docker is missing,
+analysis is skipped with a log message and the rest of the pipeline still runs.
 
 ## Create the GitHub App
 
@@ -87,3 +61,35 @@ docker compose up --build
 Resolution is by name, not full type inference, so dynamic dispatch can hide or confuse call edges.
 That is why ambiguous matches carry an `ambiguous` flag. History is per-file commit history from the
 REST API (GitHub's REST API has no blame endpoint).
+
+## Part 4: sandboxed analysis
+
+- `app/sandbox.py`: **everything that touches PR code runs in a sandbox**, including the linters,
+  because they read repo config. `DockerSandbox` starts one throwaway container per command:
+  `--network none`, read-only code mount, `--read-only` root, all capabilities dropped,
+  `no-new-privileges`, uid 65534, memory/CPU/PID limits, hard timeout with `docker kill`.
+  Host environment variables (GitHub key, tokens) are never forwarded.
+  `LocalSandbox` has **no isolation** and only runs when `CRA_ALLOW_UNSAFE_LOCAL_SANDBOX=true`.
+- `app/workspace.py`: unpacks the repo tarball for the sandbox; drops symlinks, hard links, `..`
+  paths and `.git`; enforces file-count and size caps.
+- `app/analyzers.py`: ruff (`F,B,E9,PLE` only, config ignored), bandit, and mypy
+  (`--check-untyped-defs --follow-imports=silent`, so changed files are checked against their
+  imports across files). Parsers are separate from runners and tested on canned output.
+- `app/testrun.py`: runs the related tests from Part 3 with pytest; results come back as JUnit XML,
+  parsed with `defusedxml` because the XML is produced by untrusted code. Failures are located at the
+  innermost traceback frame in non-test code.
+- `app/analysis.py`: orchestration. Dependencies come from `requirements.txt` as **wheels only**
+  (no build scripts) in a separate network-enabled step that never executes PR code; tests then run
+  with no network.
+- `app/findings.py`: every tool's output becomes one `Finding` (tool, rule, severity, confidence,
+  category, path, line, message, evidence). Each finding is scoped as `changed-line`,
+  `changed-function`, `related-test` or `other`; only the first three are reported, so pre-existing
+  lint noise in untouched code never reaches the reviewer.
+
+### Known limits
+- Test failures caused by a wrong return value point at the assertion in the test, not the buggy
+  source line (no traceback frame exists there); the finding is linked to the changed function via
+  its context instead.
+- Tests that need C-extension dependencies without wheels, or services like a database, will fail
+  or be skipped; the report says when tests crashed or timed out rather than guessing.
+- A failure may pre-date the PR. Part 6 compares against the base commit before blaming the change.

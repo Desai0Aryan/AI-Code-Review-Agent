@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     github_webhook_secret: str = ""
     github_api_url: str = "https://api.github.com"
 
+    # Sandbox for running tools/tests on untrusted PR code: docker | local | off
+    sandbox: str = "docker"
+    sandbox_image: str = "code-review-sandbox:latest"
+    allow_unsafe_local_sandbox: bool = False  # local mode has NO isolation; dev only
+    analysis_timeout: int = 120
+    test_timeout: int = 180
+
     # Reviewer behaviour (used in later parts)
     min_confidence: float = 0.6
 

@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.2",
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]
@@ -19,6 +20,8 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.4",
     "cryptography>=42",
+    "bandit>=1.7",
+    "mypy>=1.10",
 ]
 
 [tool.pytest.ini_options]

@@ -46,13 +46,17 @@ def build_changeset(client: GitHubClient, event: PullRequestEvent) -> ChangeSet:
 
 
 def build_context(
-    client: GitHubClient, event: PullRequestEvent, changeset: ChangeSet
+    client: GitHubClient,
+    event: PullRequestEvent,
+    changeset: ChangeSet,
+    archive: bytes | None = None,
 ) -> dict[str, UnitContext]:
     """Gather cross-file context for each changed unit (keyed by ChangedUnit.key)."""
     if not changeset.changed_units:
         return {}
 
-    archive = client.get_repo_archive(event.repo_full_name, event.head_sha)
+    if archive is None:
+        archive = client.get_repo_archive(event.repo_full_name, event.head_sha)
     index = RepoIndex(extract_python_files(archive))
 
     history: dict[str, list[CommitInfo]] = {}
