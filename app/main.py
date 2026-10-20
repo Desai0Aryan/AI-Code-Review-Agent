@@ -6,6 +6,9 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
 from app.config import get_settings
 from app.events import PullRequestEvent
+from app.github_auth import GitHubAuth
+from app.github_client import GitHubClient
+from app.pipeline import build_changeset
 from app.security import verify_signature
 
 logger = logging.getLogger("code_review_agent")
@@ -16,8 +19,8 @@ app = FastAPI(title="AI Code Review Agent", version="0.1.0")
 def review_pull_request(event: PullRequestEvent) -> None:
     """Review pipeline entrypoint.
 
-    Part 1 only logs. Later parts plug in: diff fetch -> AST parsing -> context
-    retrieval -> static analysis -> LLM review -> validated fixes -> PR comments.
+    Part 2: fetch diff -> parse -> map changes to functions. Later parts add context
+    retrieval, static analysis, LLM review, validated fixes and PR comments.
     """
     logger.info(
         "queued review repo=%s pr=%s head=%s",
@@ -25,6 +28,23 @@ def review_pull_request(event: PullRequestEvent) -> None:
         event.pr_number,
         event.head_sha[:7],
     )
+    settings = get_settings()
+    try:
+        auth = GitHubAuth(settings.github_app_id, settings.private_key_pem, settings.github_api_url)
+        token = auth.get_installation_token(event.installation_id)
+        with GitHubClient(token, settings.github_api_url) as client:
+            changeset = build_changeset(client, event)
+    except Exception:
+        logger.exception("review failed repo=%s pr=%s", event.repo_full_name, event.pr_number)
+        return
+
+    for cu in changeset.changed_units:
+        logger.info(
+            "changed unit %s lines=%s removed=%d",
+            cu.key,
+            cu.changed_lines,
+            cu.removed_nearby,
+        )
 
 
 @app.get("/health")

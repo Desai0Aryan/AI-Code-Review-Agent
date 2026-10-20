@@ -28,6 +28,12 @@ def rsa_keypair():
 
 
 @pytest.fixture(autouse=True)
+def no_real_review(monkeypatch):
+    """Webhook tests must never hit the real pipeline (it would call GitHub)."""
+    monkeypatch.setattr(main_module, "review_pull_request", lambda event: None)
+
+
+@pytest.fixture(autouse=True)
 def fake_settings(monkeypatch):
     monkeypatch.setattr(
         main_module,
