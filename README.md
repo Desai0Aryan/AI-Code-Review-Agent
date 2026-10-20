@@ -34,8 +34,7 @@ pytest
 uvicorn app.main:app --reload
 
 # In a SECOND terminal, run:
-# cd ~/Downloads/Projects/TraceGuard
-# ngrok http 8000
+ngrok http 8000
 
 # If ngrok requires authentication, configure your token once:
 # ngrok config add-authtoken YOUR_NGROK_AUTHTOKEN
@@ -52,7 +51,7 @@ uvicorn app.main:app --reload
 # Enable the Pull requests event and install the app on your test repo.
 
 # Docker alternative (run instead of the local server):
-# docker compose up --build
+docker compose up --build
 ```
 
 ## Create the GitHub App
