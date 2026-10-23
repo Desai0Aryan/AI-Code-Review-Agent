@@ -16,24 +16,24 @@ Recall by how the bug can be detected:
 
 | case | detectable by | result | false alarms | seconds |
 |---|---|---|---|---|
-| off-by-one-range | tests | caught | - | 1.5 |
-| boundary-comparison | tests | caught | - | 1.5 |
-| missing-return | tests | caught | - | 1.5 |
-| swapped-operands | tests | caught | - | 1.7 |
-| empty-average | tests | caught | - | 1.7 |
-| inverted-condition | tests | caught | - | 1.4 |
-| slice-drops-last | tests | caught | - | 1.5 |
-| wrong-dict-key | tests | caught | - | 2.0 |
-| undefined-name | lint | caught | - | 1.7 |
-| mutable-default | lint | caught | - | 1.5 |
-| is-with-literal | lint | caught | - | 1.1 |
-| shell-injection | lint | caught | - | 1.3 |
-| eval-of-input | lint | caught | - | 1.2 |
-| unchecked-discount | llm | missed | - | 1.0 |
-| retry-count | llm | missed | - | 1.0 |
-| clean-rename | none | clean (no alarm) | - | 1.3 |
-| clean-docstring | none | clean (no alarm) | - | 1.3 |
-| clean-new-function | none | clean (no alarm) | - | 1.3 |
-| clean-simplify | none | clean (no alarm) | - | 1.3 |
-| clean-guard | none | clean (no alarm) | - | 1.2 |
-| clean-fstring | none | clean (no alarm) | - | 1.2 |
+| off-by-one-range | tests | caught | - | 1.3 |
+| boundary-comparison | tests | caught | - | 1.3 |
+| missing-return | tests | caught | - | 1.3 |
+| swapped-operands | tests | caught | - | 1.3 |
+| empty-average | tests | caught | - | 1.3 |
+| inverted-condition | tests | caught | - | 1.3 |
+| slice-drops-last | tests | caught | - | 1.3 |
+| wrong-dict-key | tests | caught | - | 1.3 |
+| undefined-name | lint | caught | - | 1.3 |
+| mutable-default | lint | caught | - | 1.3 |
+| is-with-literal | lint | caught | - | 0.9 |
+| shell-injection | lint | caught | - | 1.0 |
+| eval-of-input | lint | caught | - | 1.0 |
+| unchecked-discount | llm | missed | - | 0.7 |
+| retry-count | llm | missed | - | 0.7 |
+| clean-rename | none | clean (no alarm) | - | 1.0 |
+| clean-docstring | none | clean (no alarm) | - | 1.0 |
+| clean-new-function | none | clean (no alarm) | - | 1.0 |
+| clean-simplify | none | clean (no alarm) | - | 1.0 |
+| clean-guard | none | clean (no alarm) | - | 1.0 |
+| clean-fstring | none | clean (no alarm) | - | 1.0 |
