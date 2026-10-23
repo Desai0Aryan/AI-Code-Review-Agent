@@ -21,9 +21,27 @@ class Settings(BaseSettings):
     analysis_timeout: int = 120
     test_timeout: int = 180
 
-    # Reviewer behaviour (used in later parts)
+    # LLM reviewer. Without an API key the reviewer reports tool findings only.
+    anthropic_api_key: str = ""
+    llm_model: str = "claude-sonnet-5-5"
+    llm_temperature: float | None = None  # set to 0 for reproducible benchmark runs
+    llm_max_tokens: int = 4096
+    max_review_units: int = 10
+
+    # Findings the model is less sure of than this are shown as "needs a human check"
     min_confidence: float = 0.6
 
+    # Fixes: candidate patches are validated in the sandbox before being offered
+    enable_fixes: bool = True
+    max_fixes: int = 3
+
+    # Publishing
+    dry_run: bool = False  # review and log, but post nothing to GitHub
+    post_clean_summary: bool = True  # say "found nothing" instead of staying silent
+    max_inline_comments: int = 10
+
+    max_concurrent_reviews: int = 2
+    data_dir: str = "data"
     log_level: str = "INFO"
 
     @property

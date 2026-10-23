@@ -24,6 +24,7 @@ class ChangeSet:
     module_level: dict[str, list[int]] = field(default_factory=dict)  # path -> lines outside units
     skipped: dict[str, str] = field(default_factory=dict)  # path -> reason
     parsed: dict[str, ParsedFile] = field(default_factory=dict)  # new-side parse per path
+    diffs: list[FileDiff] = field(default_factory=list)  # every file in the PR, parsed
 
 
 def map_changes(
@@ -37,7 +38,7 @@ def map_changes(
     old_sources: path -> file contents at the base (used to attribute removed lines).
     """
     old_sources = old_sources or {}
-    result = ChangeSet()
+    result = ChangeSet(diffs=diffs)
 
     for fd in diffs:
         path = fd.path

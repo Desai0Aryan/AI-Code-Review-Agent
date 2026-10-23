@@ -101,3 +101,70 @@ class GitHubClient:
             return None
         resp.raise_for_status()
         return resp.text
+
+    # ---- pull request state and comments -------------------------------------------------
+
+    def get_pull_request(self, repo: str, number: int) -> dict:
+        resp = self._client.get(
+            f"/repos/{repo}/pulls/{number}", headers={"Accept": "application/vnd.github+json"}
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _get_all(self, path: str, max_pages: int = 5) -> list[dict]:
+        items: list[dict] = []
+        for page in range(1, max_pages + 1):
+            resp = self._client.get(
+                path,
+                params={"per_page": 100, "page": page},
+                headers={"Accept": "application/vnd.github+json"},
+            )
+            resp.raise_for_status()
+            batch = resp.json()
+            items += batch
+            if len(batch) < 100:
+                break
+        return items
+
+    def list_review_comments(self, repo: str, number: int) -> list[dict]:
+        return self._get_all(f"/repos/{repo}/pulls/{number}/comments")
+
+    def list_issue_comments(self, repo: str, number: int) -> list[dict]:
+        return self._get_all(f"/repos/{repo}/issues/{number}/comments")
+
+    def create_review(
+        self,
+        repo: str,
+        number: int,
+        commit_id: str,
+        comments: list[dict],
+        body: str = "",
+        event: str = "COMMENT",
+    ) -> dict:
+        """Post one review containing inline comments. Raises HTTPStatusError (422) when a
+        comment points at a line that is not part of the diff."""
+        resp = self._client.post(
+            f"/repos/{repo}/pulls/{number}/reviews",
+            json={"commit_id": commit_id, "body": body, "event": event, "comments": comments},
+            headers={"Accept": "application/vnd.github+json"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def create_issue_comment(self, repo: str, number: int, body: str) -> dict:
+        resp = self._client.post(
+            f"/repos/{repo}/issues/{number}/comments",
+            json={"body": body},
+            headers={"Accept": "application/vnd.github+json"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_issue_comment(self, repo: str, comment_id: int, body: str) -> dict:
+        resp = self._client.patch(
+            f"/repos/{repo}/issues/comments/{comment_id}",
+            json={"body": body},
+            headers={"Accept": "application/vnd.github+json"},
+        )
+        resp.raise_for_status()
+        return resp.json()

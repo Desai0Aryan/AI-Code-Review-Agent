@@ -37,7 +37,7 @@ def select_test_files(changeset: ChangeSet, contexts: dict[str, UnitContext]) ->
     return sorted(paths)[:MAX_TEST_FILES]
 
 
-def _install_dependencies(sandbox: Sandbox, work: Path, deps: Path, timeout: int) -> str | None:
+def install_dependencies(sandbox: Sandbox, work: Path, deps: Path, timeout: int) -> str | None:
     """Install requirements.txt wheels. Wheels only: no sdist build scripts ever run, and the
     PR's own code is not executed in this network-enabled step."""
     if not (work / "requirements.txt").is_file():
@@ -111,7 +111,7 @@ def run_analysis(
 
         test_files = select_test_files(changeset, contexts)
         if test_files:
-            note = _install_dependencies(sandbox, work, deps, test_timeout)
+            note = install_dependencies(sandbox, work, deps, test_timeout)
             if note:
                 report.notes.append(note)
             report.tests = run_tests(sandbox, work, deps, out, test_files, test_timeout)

@@ -61,9 +61,7 @@ diff --git a/README.md b/README.md
 
 
 def test_changed_lines_map_to_functions():
-    cs = map_changes(
-        parse_unified_diff(DIFF), {"shop/cart.py": NEW}, {"shop/cart.py": OLD}
-    )
+    cs = map_changes(parse_unified_diff(DIFF), {"shop/cart.py": NEW}, {"shop/cart.py": OLD})
     assert [c.key for c in cs.changed_units] == ["shop/cart.py::Cart.total"]
     total = cs.changed_units[0]
     assert total.changed_lines == [7, 8, 9]

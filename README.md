@@ -1,95 +1,97 @@
 # AI Code Review Agent
 
-A GitHub App that reviews pull requests, traces bugs across files, flags security issues,
-and proposes fixes backed by line-specific evidence. Uncertain findings are flagged, not invented.
+A GitHub App that reviews pull requests the way a careful colleague would: it reads the changed
+functions in context, runs static analysis and the related tests in a sandbox, and only reports
+what it can back with evidence. Anything it is unsure about is flagged as a question, not stated as fact.
 
-> Status: Part 4 of 8 (static analysis and sandboxed tests). See [docs/ROADMAP.md](docs/ROADMAP.md).
+On a PR it will:
 
-## Quick start
+1. Parse the diff with tree-sitter and find which functions changed.
+2. Gather context: callers, callees, related tests, recent commit history.
+3. Run ruff, bandit, mypy and the related pytest tests in a Docker sandbox (no network, read-only code).
+4. Check whether a failing test also fails on the base commit (then it is not blamed on the PR).
+5. Ask the model for bugs, then **ground** every claim: the cited line must have been shown to the model
+   and the quoted text must really be there. Claims that fail are discarded and counted.
+6. Decide status in code, not by the model: `confirmed` (a tool or failing test backs it), `likely`, or `uncertain`.
+7. Try a fix, apply it in the sandbox and re-run lint and tests. Only fixes that pass are offered, as
+   one-click GitHub suggestions.
+8. Post inline comments (only on lines GitHub accepts, never duplicated) and one summary comment that is updated in place.
+
+## Try it in two minutes (no GitHub needed)
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
-cp .env.example .env   # fill in GitHub App credentials
-uvicorn app.main:app --reload
+make install && source .venv/bin/activate
+make test          # full test suite
+make demo          # a PR with a seeded bug goes through the whole pipeline
+make benchmark     # 15 seeded bugs + 6 clean PRs, scored
 ```
 
-Docker: `docker compose up --build`
+## Connect your GitHub App
 
-Sandbox image (needed for static analysis and test runs, Part 4 onward):
+Prerequisites: Python 3.11+, Docker (for the sandbox), a GitHub App, optionally an Anthropic API key.
+
+1. **GitHub App settings** (already created): Permissions: Pull requests *read & write*, Contents *read*,
+   Metadata *read*. Subscribe to **Pull request** events. Webhook content type must be **application/json**.
+   Generate a private key.
+2. `cp .env.example .env` and fill in `CRA_GITHUB_APP_ID`, `CRA_GITHUB_WEBHOOK_SECRET`,
+   `CRA_GITHUB_PRIVATE_KEY` (the .pem with literal `\n` for newlines) and, for model review and fixes,
+   `CRA_ANTHROPIC_API_KEY`.
+3. `make sandbox` builds the isolated image used to run linters and tests on PR code.
+4. `make doctor` checks everything, including asking GitHub whether the App's permissions, events,
+   webhook URL and content type are right, and runs a real container through the sandbox. Fix anything marked FAIL.
+5. `make serve` starts the server on port 8000. Run it on the host, not in the compose container, so it can start sandboxes.
+6. Expose it: `ngrok http 8000` (or smee.io) and set the App's Webhook URL to `https://<public-host>/webhook`.
+7. Install the App on a test repo and open a PR.
+
+Review a PR right now without waiting for a webhook (prints, posts nothing unless `--post`):
 
 ```bash
-docker build -f docker/sandbox.Dockerfile -t code-review-sandbox .
+python -m app review owner/repo 12
+python -m app review owner/repo 12 --post
 ```
-Run the app itself on the host (`uvicorn app.main:app`) so it can start sandbox containers. Do not
-mount `/var/run/docker.sock` into the app container: that is root on the host. If Docker is missing,
-analysis is skipped with a log message and the rest of the pipeline still runs.
 
-## Create the GitHub App
+Good first PR: change a function so it has an obvious bug (swap an operator, mistype a variable) in a repo that has pytest tests.
 
-1. GitHub > Settings > Developer settings > GitHub Apps > New GitHub App.
-2. Webhook URL: your public URL + `/webhook` (use `smee.io` or `ngrok` locally).
-3. Webhook secret: any random string; put it in `CRA_GITHUB_WEBHOOK_SECRET`.
-4. Permissions: Pull requests (read & write), Contents (read), Metadata (read), Checks (read & write).
-5. Subscribe to events: Pull request.
-6. Generate a private key; put it in `CRA_GITHUB_PRIVATE_KEY` and the App ID in `CRA_GITHUB_APP_ID`.
-7. Install the app on a test repository.
+## Configuration
 
-## What exists so far
+See `.env.example`. Notable: `CRA_DRY_RUN=true` (review, post nothing), `CRA_SANDBOX=docker|local|off`,
+`CRA_ENABLE_FIXES`, `CRA_MIN_CONFIDENCE`, `CRA_LLM_MODEL`. `CRA_SANDBOX=local` has **no isolation**
+and needs `CRA_ALLOW_UNSAFE_LOCAL_SANDBOX=true`; use it only on a throwaway machine.
 
-- `POST /webhook`: HMAC-verified (`X-Hub-Signature-256`), handles `ping` and `pull_request`
-  (opened, synchronize, reopened, ready_for_review; drafts ignored).
-- `app/github_auth.py`: app JWT (RS256) and cached installation tokens.
-- Dockerfile, compose file, GitHub Actions CI (ruff + pytest + docker build).
-- `app/diff.py`: unified-diff parser with exact old/new line numbers; handles new, deleted and binary files.
-- `app/parsing.py`: tree-sitter Python parser that extracts functions, methods, nested functions and
-  classes with line spans (decorators included) and the names each function calls.
-- `app/changes.py`: maps added/removed lines onto the functions that contain them, and separates
-  module-level edits from function edits.
-- `app/github_client.py` and `app/pipeline.py`: fetch the PR diff and file contents at base/head,
-  then build the change set. The webhook now logs every changed function per PR.
-- `app/index.py`: downloads the repo tarball once (in memory, never to disk), parses every Python file,
-  and indexes definitions and call sites. Skips vendored dirs, path traversal and oversized files.
-- `app/context.py`: for each changed function, finds callers (with call-site lines), callees resolved
-  across files, related tests (by direct call and by `test_<module>.py` naming), and recent commits.
-  Ambiguous name matches are flagged rather than guessed, and every limit is recorded as a caveat
-  (e.g. "no tests reference this function") so the reviewer can calibrate confidence.
-- `UnitContext.to_text()` renders that evidence as a compact block for the LLM prompt (Part 5).
+## Safety model
 
-### Known limits of context retrieval
-Resolution is by name, not full type inference, so dynamic dispatch can hide or confuse call edges.
-That is why ambiguous matches carry an `ambiguous` flag. History is per-file commit history from the
-REST API (GitHub's REST API has no blame endpoint).
+- Webhooks are verified with HMAC; repo names are validated; duplicate deliveries are ignored.
+- PR code only ever runs inside the sandbox: `--network none`, read-only mounts, all capabilities dropped,
+  non-root, memory/CPU/PID limits, hard timeout. Host secrets are never passed in. Dependencies install as
+  wheels only (no build scripts) in a separate step that does not run PR code.
+- Repo text sent to the model is wrapped in random delimiters and treated as data, never instructions.
+- Stale reviews (the PR moved on) are never posted. Source code of changed functions and their callers
+  is sent to the Anthropic API when a key is configured.
 
-## Part 4: sandboxed analysis
+## Benchmark
 
-- `app/sandbox.py`: **everything that touches PR code runs in a sandbox**, including the linters,
-  because they read repo config. `DockerSandbox` starts one throwaway container per command:
-  `--network none`, read-only code mount, `--read-only` root, all capabilities dropped,
-  `no-new-privileges`, uid 65534, memory/CPU/PID limits, hard timeout with `docker kill`.
-  Host environment variables (GitHub key, tokens) are never forwarded.
-  `LocalSandbox` has **no isolation** and only runs when `CRA_ALLOW_UNSAFE_LOCAL_SANDBOX=true`.
-- `app/workspace.py`: unpacks the repo tarball for the sandbox; drops symlinks, hard links, `..`
-  paths and `.git`; enforces file-count and size caps.
-- `app/analyzers.py`: ruff (`F,B,E9,PLE` only, config ignored), bandit, and mypy
-  (`--check-untyped-defs --follow-imports=silent`, so changed files are checked against their
-  imports across files). Parsers are separate from runners and tested on canned output.
-- `app/testrun.py`: runs the related tests from Part 3 with pytest; results come back as JUnit XML,
-  parsed with `defusedxml` because the XML is produced by untrusted code. Failures are located at the
-  innermost traceback frame in non-test code.
-- `app/analysis.py`: orchestration. Dependencies come from `requirements.txt` as **wheels only**
-  (no build scripts) in a separate network-enabled step that never executes PR code; tests then run
-  with no network.
-- `app/findings.py`: every tool's output becomes one `Finding` (tool, rule, severity, confidence,
-  category, path, line, message, evidence). Each finding is scoped as `changed-line`,
-  `changed-function`, `related-test` or `other`; only the first three are reported, so pre-existing
-  lint noise in untouched code never reaches the reviewer.
+`python -m benchmark` runs 21 seeded cases (8 bugs a test catches, 5 a linter catches, 2 only a reader
+can catch, 6 clean PRs) through the real pipeline against an in-memory GitHub. Add `--llm` (needs an API key)
+to include the model. Results are written to `benchmark/results/`. Deterministic baseline:
+**13/15 bugs caught, 0 false alarms on 21 cases**; the 2 misses are exactly the bugs with no covering test,
+which is what the model review is for. See [docs/BENCHMARK.md](docs/BENCHMARK.md) for method and caveats.
 
-### Known limits
-- Test failures caused by a wrong return value point at the assertion in the test, not the buggy
-  source line (no traceback frame exists there); the finding is linked to the changed function via
-  its context instead.
-- Tests that need C-extension dependencies without wheels, or services like a database, will fail
-  or be skipped; the report says when tests crashed or timed out rather than guessing.
-- A failure may pre-date the PR. Part 6 compares against the base commit before blaming the change.
+## Layout
+
+| Path | What |
+|---|---|
+| `app/main.py` | webhook server |
+| `app/service.py` | the end-to-end review |
+| `app/{diff,parsing,changes,index,context}.py` | diff, tree-sitter, change mapping, repo context |
+| `app/{sandbox,analyzers,testrun,analysis,baseline}.py` | sandboxed tools and tests |
+| `app/{llm,prompts,grounding,reviewer}.py` | model review with grounding |
+| `app/{fixer,publisher,render}.py` | tested fixes and PR comments |
+| `app/devtools/` | in-memory GitHub, demo |
+| `benchmark/` | seeded-defect corpus and scorer |
+
+## Known limits
+
+- Python only. Callers/callees resolve by name (ambiguous matches are flagged), not full type inference.
+- The Docker sandbox path has been unit-tested for its command construction but needs your Docker to exercise for real: run `make doctor`.
+- Tests needing services, or dependencies without wheels, will not run; the report says so.
+- Inline comments only land on lines in the diff; findings elsewhere appear in the summary.

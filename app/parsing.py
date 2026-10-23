@@ -78,9 +78,7 @@ def _call_name(call: Node, src: bytes) -> str | None:
     return None
 
 
-def _collect_calls(
-    node: Node, src: bytes, out: list[str], sites: list[tuple[str, int]]
-) -> None:
+def _collect_calls(node: Node, src: bytes, out: list[str], sites: list[tuple[str, int]]) -> None:
     if node.type == "call":
         name = _call_name(node, src)
         if name:
@@ -139,7 +137,9 @@ def parse_python(path: str, source: str) -> ParsedFile:
     units: list[CodeUnit] = []
     _walk(tree.root_node, src, [], units)
     units.sort(key=lambda u: (u.start_line, u.end_line))
-    return ParsedFile(path=path, source=source, units=units, has_syntax_errors=tree.root_node.has_error)
+    return ParsedFile(
+        path=path, source=source, units=units, has_syntax_errors=tree.root_node.has_error
+    )
 
 
 def parse_file(path: str, source: str) -> ParsedFile | None:

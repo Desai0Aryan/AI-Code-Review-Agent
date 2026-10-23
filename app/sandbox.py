@@ -71,7 +71,11 @@ class DockerSandbox:
     """One throwaway container per command: no network by default, read-only code,
     all capabilities dropped, unprivileged user, and memory/CPU/process limits."""
 
-    CONTAINER_PATHS: ClassVar[dict[str, str]] = {"{work}": "/work", "{deps}": "/deps", "{out}": "/out"}
+    CONTAINER_PATHS: ClassVar[dict[str, str]] = {
+        "{work}": "/work",
+        "{deps}": "/deps",
+        "{out}": "/out",
+    }
 
     def __init__(
         self,
@@ -246,7 +250,9 @@ def get_sandbox(settings) -> Sandbox | None:
         return None
     if mode == "local":
         if not settings.allow_unsafe_local_sandbox:
-            logger.error("sandbox=local needs CRA_ALLOW_UNSAFE_LOCAL_SANDBOX=true; skipping analysis")
+            logger.error(
+                "sandbox=local needs CRA_ALLOW_UNSAFE_LOCAL_SANDBOX=true; skipping analysis"
+            )
             return None
         logger.warning("using LocalSandbox: PR code runs WITHOUT isolation")
         return LocalSandbox()

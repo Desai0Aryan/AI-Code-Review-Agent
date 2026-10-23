@@ -1,3 +1,6 @@
+# Runs the webhook server only. The server starts sandbox containers through Docker, so for real
+# reviews run it on the host (`make serve`). Inside this container Docker is unavailable and
+# analysis is skipped; do not mount /var/run/docker.sock (that is root on the host).
 services:
   agent:
     build: .
@@ -5,4 +8,12 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      CRA_SANDBOX: "off"
+      CRA_DATA_DIR: /data
+    volumes:
+      - agent-data:/data
     restart: unless-stopped
+
+volumes:
+  agent-data:

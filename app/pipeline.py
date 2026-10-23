@@ -50,21 +50,25 @@ def build_context(
     event: PullRequestEvent,
     changeset: ChangeSet,
     archive: bytes | None = None,
+    index: RepoIndex | None = None,
 ) -> dict[str, UnitContext]:
     """Gather cross-file context for each changed unit (keyed by ChangedUnit.key)."""
     if not changeset.changed_units:
         return {}
 
-    if archive is None:
-        archive = client.get_repo_archive(event.repo_full_name, event.head_sha)
-    index = RepoIndex(extract_python_files(archive))
+    if index is None:
+        if archive is None:
+            archive = client.get_repo_archive(event.repo_full_name, event.head_sha)
+        index = RepoIndex(extract_python_files(archive))
 
     history: dict[str, list[CommitInfo]] = {}
     contexts: dict[str, UnitContext] = {}
     for cu in changeset.changed_units[:MAX_CONTEXT_UNITS]:
         if cu.path not in history:
             try:
-                history[cu.path] = client.list_commits(event.repo_full_name, cu.path, event.head_sha)
+                history[cu.path] = client.list_commits(
+                    event.repo_full_name, cu.path, event.head_sha
+                )
             except httpx.HTTPError:
                 history[cu.path] = []  # history is best-effort; never fail the review over it
         contexts[cu.key] = build_unit_context(index, cu, history[cu.path])

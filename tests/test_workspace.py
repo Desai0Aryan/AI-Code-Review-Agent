@@ -25,7 +25,9 @@ def tarball(entries):
 
 def test_extracts_files_and_strips_prefix(tmp_path):
     n = extract_workspace(
-        tarball([("o-r-abc/a.py", b"x=1\n"), ("o-r-abc/pkg/b.txt", b"hi"), ("o-r-abc/.git/HEAD", b"r")]),
+        tarball(
+            [("o-r-abc/a.py", b"x=1\n"), ("o-r-abc/pkg/b.txt", b"hi"), ("o-r-abc/.git/HEAD", b"r")]
+        ),
         tmp_path / "w",
     )
     assert n == 2
@@ -67,4 +69,6 @@ def test_limits_are_enforced(tmp_path):
     with pytest.raises(ValueError, match="size limits"):
         extract_workspace(tarball([("p/a.py", b"x" * 100)]), tmp_path / "b", max_total_bytes=50)
     # oversized single files are skipped, not fatal
-    assert extract_workspace(tarball([("p/a.py", b"x" * 100)]), tmp_path / "c", max_file_bytes=50) == 0
+    assert (
+        extract_workspace(tarball([("p/a.py", b"x" * 100)]), tmp_path / "c", max_file_bytes=50) == 0
+    )

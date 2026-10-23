@@ -52,7 +52,9 @@ def test_docker_tokens_are_substituted_in_command():
 
 
 def test_local_sandbox_runs_and_captures(tmp_path):
-    res = LocalSandbox().run(["python", "-c", "print('hi'); import sys; sys.exit(3)"], work=tmp_path)
+    res = LocalSandbox().run(
+        ["python", "-c", "print('hi'); import sys; sys.exit(3)"], work=tmp_path
+    )
     assert res.stdout.strip() == "hi" and res.returncode == 3 and not res.timed_out
 
 

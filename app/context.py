@@ -52,7 +52,8 @@ class UnitContext:
         out = [f"## Context for {self.key}"]
         out.append("Callers:")
         out += [
-            f"- {r.key} (lines {', '.join(map(str, r.lines))})" + (" [ambiguous]" if r.ambiguous else "")
+            f"- {r.key} (lines {', '.join(map(str, r.lines))})"
+            + (" [ambiguous]" if r.ambiguous else "")
             for r in self.callers
         ] or ["- none found"]
         out.append("Calls into:")
@@ -171,7 +172,9 @@ def _find_tests(index: RepoIndex, changed: ChangedUnit, name: str | None) -> lis
                                     f"test module for {posixpath.basename(changed.path)}"),
                     )  # fmt: skip
 
-    ordered = sorted(tests.values(), key=lambda t: (not t.reason.startswith("calls"), t.path, t.start_line))
+    ordered = sorted(
+        tests.values(), key=lambda t: (not t.reason.startswith("calls"), t.path, t.start_line)
+    )
     return ordered[:MAX_TESTS]
 
 

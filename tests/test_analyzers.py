@@ -91,7 +91,12 @@ def test_parse_bandit():
         }
     )  # fmt: skip
     f = parse_bandit(out, ROOTS)
-    assert (f[0].rule, f[0].severity, f[0].confidence, f[0].category) == ("B602", "high", 0.9, "security")
+    assert (f[0].rule, f[0].severity, f[0].confidence, f[0].category) == (
+        "B602",
+        "high",
+        0.9,
+        "security",
+    )
     assert (f[1].severity, f[1].confidence, f[1].path) == ("low", 0.6, "a.py")
 
 
@@ -127,7 +132,9 @@ def test_bandit_finds_shell_injection_for_real(project):
 
 
 def test_mypy_finds_type_error_across_files_for_real(project):
-    res = run_mypy(LocalSandbox(), project, ["shop/cart.py", "shop/pricing.py"], 120, (f"{project}/",))
+    res = run_mypy(
+        LocalSandbox(), project, ["shop/cart.py", "shop/pricing.py"], 120, (f"{project}/",)
+    )
     assert res.error is None, res.error
     rules = {(f.path, f.rule, f.line) for f in res.findings}
     assert ("shop/pricing.py", "return-value", 5) in rules

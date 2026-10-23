@@ -42,9 +42,7 @@ def test_expired_token_is_refreshed(rsa_keypair):
 
     def handler(request: httpx.Request) -> httpx.Response:
         counter["n"] += 1
-        return httpx.Response(
-            201, json={"token": f"tok{counter['n']}", "expires_at": _expiry(0)}
-        )
+        return httpx.Response(201, json={"token": f"tok{counter['n']}", "expires_at": _expiry(0)})
 
     auth = GitHubAuth("42", private_pem, transport=httpx.MockTransport(handler))
     assert auth.get_installation_token(1) == "tok1"

@@ -1,90 +1,83 @@
 """FastAPI entrypoint: receives GitHub webhooks and queues PR reviews."""
 
+import json
 import logging
+import threading
+from collections import OrderedDict
+from contextlib import asynccontextmanager
+from urllib.parse import parse_qs
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
-from app.analysis import AnalysisReport, run_analysis
 from app.config import get_settings
 from app.events import PullRequestEvent
-from app.github_auth import GitHubAuth
-from app.github_client import GitHubClient
-from app.pipeline import build_changeset, build_context
-from app.sandbox import get_sandbox
+from app.logging_config import configure_logging
 from app.security import verify_signature
+from app.service import ReviewService
+from app.store import Store
 
 logger = logging.getLogger("code_review_agent")
 
-app = FastAPI(title="AI Code Review Agent", version="0.1.0")
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    configure_logging(get_settings().log_level)
+    yield
+
+
+app = FastAPI(title="AI Code Review Agent", version="1.0.0", lifespan=_lifespan)
+
+_seen_deliveries: OrderedDict[str, None] = OrderedDict()
+_seen_lock = threading.Lock()
+_pr_locks: dict[str, threading.Lock] = {}
+_pr_locks_guard = threading.Lock()
+_semaphore: threading.Semaphore | None = None
+
+
+def _first_delivery(delivery_id: str | None) -> bool:
+    """GitHub redelivers on timeouts; process each delivery id once."""
+    if not delivery_id:
+        return True
+    with _seen_lock:
+        if delivery_id in _seen_deliveries:
+            return False
+        _seen_deliveries[delivery_id] = None
+        while len(_seen_deliveries) > 1000:
+            _seen_deliveries.popitem(last=False)
+    return True
+
+
+def _pr_lock(key: str) -> threading.Lock:
+    with _pr_locks_guard:
+        return _pr_locks.setdefault(key, threading.Lock())
+
+
+def _limiter(n: int) -> threading.Semaphore:
+    global _semaphore
+    if _semaphore is None:
+        _semaphore = threading.Semaphore(max(1, n))
+    return _semaphore
 
 
 def review_pull_request(event: PullRequestEvent) -> None:
-    """Review pipeline entrypoint.
-
-    Part 2: fetch diff -> parse -> map changes to functions. Later parts add context
-    retrieval, static analysis, LLM review, validated fixes and PR comments.
-    """
-    logger.info(
-        "queued review repo=%s pr=%s head=%s",
-        event.repo_full_name,
-        event.pr_number,
-        event.head_sha[:7],
-    )
+    """Background job. One review per PR at a time, a few PRs in parallel."""
     settings = get_settings()
-    archive = None
-    try:
-        auth = GitHubAuth(settings.github_app_id, settings.private_key_pem, settings.github_api_url)
-        token = auth.get_installation_token(event.installation_id)
-        with GitHubClient(token, settings.github_api_url) as client:
-            changeset = build_changeset(client, event)
-            if changeset.changed_units:
-                archive = client.get_repo_archive(event.repo_full_name, event.head_sha)
-            contexts = build_context(client, event, changeset, archive=archive)
-    except Exception:
-        logger.exception("review failed repo=%s pr=%s", event.repo_full_name, event.pr_number)
-        return
-
-    for cu in changeset.changed_units:
-        ctx = contexts.get(cu.key)
-        logger.info(
-            "changed unit %s lines=%s removed=%d callers=%d callees=%d tests=%d commits=%d",
-            cu.key,
-            cu.changed_lines,
-            cu.removed_nearby,
-            len(ctx.callers) if ctx else 0,
-            len(ctx.callees) if ctx else 0,
-            len(ctx.tests) if ctx else 0,
-            len(ctx.history) if ctx else 0,
-        )
-
-    report = AnalysisReport()
-    sandbox = get_sandbox(settings) if archive is not None else None
-    if sandbox is not None:
+    with (
+        _limiter(settings.max_concurrent_reviews),
+        _pr_lock(f"{event.repo_full_name}#{event.pr_number}"),
+    ):
         try:
-            report = run_analysis(
-                archive,
-                changeset,
-                contexts,
-                sandbox,
-                analysis_timeout=settings.analysis_timeout,
-                test_timeout=settings.test_timeout,
-            )
+            ReviewService(settings, store=Store(settings.data_dir)).run(event)
         except Exception:
-            logger.exception("analysis failed repo=%s pr=%s", event.repo_full_name, event.pr_number)
+            logger.exception("review crashed repo=%s pr=%s", event.repo_full_name, event.pr_number)
 
-    if report.tests is not None:
-        t = report.tests
-        logger.info(
-            "tests ran=%d passed=%d failed=%d errors=%d timed_out=%s crashed=%s",
-            t.tests, t.passed, t.failed, t.errors, t.timed_out, t.crashed,
-        )  # fmt: skip
-    for f in report.relevant:
-        logger.info(
-            "finding %s %s %s severity=%s scope=%s: %s",
-            f.tool, f.rule, f.location, f.severity, f.scope, f.message,
-        )  # fmt: skip
-    for note in report.notes:
-        logger.warning("analysis note: %s", note)
+
+def _decode_payload(body: bytes, content_type: str) -> dict:
+    """GitHub can send JSON or form-encoded (payload=<json>); accept both."""
+    if "application/x-www-form-urlencoded" in content_type:
+        fields = parse_qs(body.decode("utf-8", "replace"))
+        return json.loads(fields["payload"][0])
+    return json.loads(body)
 
 
 @app.get("/health")
@@ -98,6 +91,7 @@ async def webhook(
     background_tasks: BackgroundTasks,
     x_github_event: str | None = Header(default=None),
     x_hub_signature_256: str | None = Header(default=None),
+    x_github_delivery: str | None = Header(default=None),
 ) -> dict:
     body = await request.body()
     settings = get_settings()
@@ -112,12 +106,16 @@ async def webhook(
         return {"status": "ignored", "reason": f"event '{x_github_event}' not handled"}
 
     try:
-        event = PullRequestEvent.from_payload(await request.json())
-    except (KeyError, TypeError) as exc:
+        payload = _decode_payload(body, request.headers.get("content-type", ""))
+        event = PullRequestEvent.from_payload(payload)
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
         raise HTTPException(status_code=422, detail=f"malformed payload: {exc}") from exc
 
     if not event.should_review:
         return {"status": "ignored", "reason": f"action '{event.action}' (draft={event.draft})"}
+
+    if not _first_delivery(x_github_delivery):
+        return {"status": "ignored", "reason": "duplicate delivery"}
 
     background_tasks.add_task(review_pull_request, event)
     return {"status": "queued", "repo": event.repo_full_name, "pr": event.pr_number}

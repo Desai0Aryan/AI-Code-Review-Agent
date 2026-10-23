@@ -69,3 +69,34 @@ def test_other_events_ignored():
 
 def test_malformed_payload_422():
     assert _post("pull_request", {"action": "opened"}).status_code == 422
+
+
+def test_form_encoded_payload_is_accepted():
+    from urllib.parse import urlencode
+
+    body = urlencode({"payload": json.dumps(_pr_payload("opened"))}).encode()
+    resp = client.post(
+        "/webhook",
+        content=body,
+        headers={
+            "X-GitHub-Event": "pull_request",
+            "X-Hub-Signature-256": compute_signature(TEST_SECRET, body),
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+    )
+    assert resp.status_code == 202 and resp.json()["status"] == "queued"
+
+
+def test_duplicate_delivery_is_ignored():
+    body = json.dumps(_pr_payload("opened")).encode()
+    headers = {
+        "X-GitHub-Event": "pull_request",
+        "X-GitHub-Delivery": "dup-1",
+        "X-Hub-Signature-256": compute_signature(TEST_SECRET, body),
+        "Content-Type": "application/json",
+    }
+    assert client.post("/webhook", content=body, headers=headers).json()["status"] == "queued"
+    assert (
+        client.post("/webhook", content=body, headers=headers).json()["reason"]
+        == "duplicate delivery"
+    )

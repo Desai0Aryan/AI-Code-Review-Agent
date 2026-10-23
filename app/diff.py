@@ -40,6 +40,12 @@ class FileDiff:
         return self.new_path is None
 
     @property
+    def commentable_lines(self) -> set[int]:
+        """New-side lines inside a hunk (added or context). GitHub rejects review comments
+        anywhere else."""
+        return {n for h in self.hunks for n in range(h.new_start, h.new_start + h.new_count)}
+
+    @property
     def added_lines(self) -> list[int]:
         return [n for h in self.hunks for n, _ in h.added]
 

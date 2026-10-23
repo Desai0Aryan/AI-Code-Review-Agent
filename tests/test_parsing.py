@@ -1,6 +1,6 @@
 from app.parsing import language_for, parse_file, parse_python
 
-CODE = '''\
+CODE = """\
 import os
 
 
@@ -23,7 +23,7 @@ class Cart:
         def inner(i):
             return i.price
         return sum(inner(i) for i in self.items)
-'''
+"""
 
 
 def names(parsed):

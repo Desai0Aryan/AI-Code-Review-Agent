@@ -39,8 +39,8 @@ REPO = {
 }
 
 
-def changeset_for_total():
-    index = RepoIndex(REPO)
+def changeset_for_total(repo=None):
+    index = RepoIndex(repo or REPO)
     unit = next(u for u in index.files["shop/cart.py"].units if u.qualified_name == "Cart.total")
     cu = ChangedUnit("shop/cart.py", unit, changed_lines=[8, 9])
     cs = ChangeSet(changed_units=[cu], parsed={"shop/cart.py": index.files["shop/cart.py"]})

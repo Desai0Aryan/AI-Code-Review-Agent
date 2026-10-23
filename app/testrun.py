@@ -126,6 +126,7 @@ def failures_to_findings(run: TestRun, roots: tuple[str, ...]) -> list[Finding]:
                 line=line,
                 message=f"{fail.nodeid}: {fail.message.splitlines()[0] if fail.message else fail.kind}",
                 evidence=excerpt,
+                nodeid=fail.nodeid,
             )
         )
     return findings

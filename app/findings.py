@@ -26,6 +26,8 @@ class Finding:
     scope: str = "other"  # changed-line | changed-function | related-test | other
     unit_key: str | None = None
     evidence: str = ""  # source excerpt or traceback tail
+    nodeid: str | None = None  # pytest only: which test
+    pre_existing: bool = False  # pytest only: the same test also fails on the base commit
 
     @property
     def location(self) -> str:

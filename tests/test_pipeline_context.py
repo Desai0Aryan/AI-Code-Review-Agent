@@ -21,7 +21,9 @@ EVENT = PullRequestEvent(
 
 def changeset_for_total() -> ChangeSet:
     unit = next(
-        u for u in RepoIndex(FAKE_REPO).files["shop/cart.py"].units if u.qualified_name == "Cart.total"
+        u
+        for u in RepoIndex(FAKE_REPO).files["shop/cart.py"].units
+        if u.qualified_name == "Cart.total"
     )
     return ChangeSet(changed_units=[ChangedUnit("shop/cart.py", unit, [8, 9])])
 
@@ -29,7 +31,9 @@ def changeset_for_total() -> ChangeSet:
 def make_handler(seen: list, commits_status: int = 200):
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        if request.url.host == "api.github.com" and request.url.path.endswith(f"/tarball/{'h' * 40}"):
+        if request.url.host == "api.github.com" and request.url.path.endswith(
+            f"/tarball/{'h' * 40}"
+        ):
             return httpx.Response(302, headers={"Location": "https://codeload.github.com/dl/abc"})
         if request.url.host == "codeload.github.com":
             return httpx.Response(200, content=make_tarball(FAKE_REPO))
@@ -71,9 +75,7 @@ def test_build_context_end_to_end_with_redirect_and_history():
 
 
 def test_history_failure_does_not_break_context():
-    client = GitHubClient(
-        "t", transport=httpx.MockTransport(make_handler([], commits_status=500))
-    )
+    client = GitHubClient("t", transport=httpx.MockTransport(make_handler([], commits_status=500)))
     ctx = build_context(client, EVENT, changeset_for_total())["shop/cart.py::Cart.total"]
     assert ctx.history == []
     assert ctx.callers  # the rest still worked

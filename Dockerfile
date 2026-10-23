@@ -7,7 +7,7 @@ COPY pyproject.toml ./
 COPY app ./app
 RUN pip install --no-cache-dir .
 
-RUN useradd --create-home appuser
+RUN useradd --create-home appuser && mkdir /data && chown appuser /data
 USER appuser
 
 EXPOSE 8000
